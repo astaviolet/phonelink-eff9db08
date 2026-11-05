@@ -50,20 +50,38 @@ def parts(ident):
     cs = call('GET', API + '/issues/%s/comments?per_page=100&t=%d' % (ident, time.time_ns()))
     return [c['body'] for c in cs if c.get('body', '').startswith('PL1.')]
 
+def assemble(blobs):
+    """Junta as partes cifradas; devolve None enquanto faltar alguma."""
+    got, need = {}, None
+    for b in blobs:
+        s = decrypt(b)
+        if s.startswith('P') and '|' in s[:12]:
+            head, payload = s.split('|', 1)
+            try:
+                i, total = head[1:].split('/'); i, total = int(i), int(total)
+                got[i] = payload; need = total
+            except ValueError:
+                pass
+        else:
+            got[1] = s; need = 1
+    if need and len(got) == need:
+        return ''.join(got[k] for k in range(1, need + 1))
+    return None
+
 def send(cmd):
     iss = call('POST', API + '/issues', {'title': 'pl', 'body': encrypt(cmd), 'labels': ['pl']})
     n = iss['number']; print('ID=' + str(n), flush=True)
     for _ in range(90):
         time.sleep(1)
-        p = parts(n)
-        if p:
-            print(''.join(decrypt(b) for b in p), flush=True)
+        out = assemble(parts(n))
+        if out is not None:
+            print(out, flush=True)
             return
     print('(sem resposta ainda; use PL_ID=%d python3 pl.py --read)' % n)
 
 def read(ident):
-    p = parts(ident)
-    print(''.join(decrypt(b) for b in p) if p else '(sem resposta)')
+    out = assemble(parts(ident))
+    print(out if out is not None else '(sem resposta)')
 
 if __name__ == '__main__':
     if len(sys.argv) > 1 and sys.argv[1] == '--read':
