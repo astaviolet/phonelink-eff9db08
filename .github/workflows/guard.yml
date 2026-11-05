@@ -1,0 +1,32 @@
+name: phonelink-guard
+on:
+  issues:
+    types: [opened]
+  schedule:
+    - cron: "17 4 * * *"
+permissions:
+  issues: write
+  contents: read
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fechar issues invalidas (anti-spam)
+        if: github.event_name == 'issues'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NUM: ${{ github.event.issue.number }}
+          BODY: ${{ github.event.issue.body }}
+          REPO: ${{ github.repository }}
+        run: |
+          case "$BODY" in
+            PL1.*) echo "payload cifrado OK" ;;
+            *) gh issue close "$NUM" -R "$REPO" --reason "not planned"                  --comment "Payload nao cifrado: ignorado." || true ;;
+          esac
+      - name: Limpeza de issues antigas
+        if: github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh issue list -R "$REPO" --state open --label pl --limit 100 --json number,createdAt             --jq '.[] | select(.createdAt < (now - 604800 | strftime("%Y-%m-%dT%H:%M:%SZ"))) | .number'             | while read n; do gh issue close "$n" -R "$REPO" --reason "not planned" || true; done
